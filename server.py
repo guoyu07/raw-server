@@ -1,46 +1,60 @@
+import os
 import http.server
 
 
 class RequestHandler(http.server.BaseHTTPRequestHandler):
-    '''Handle HTTP request by sending a fixed 'page'. '''
-    # page to send back
-    Page = '''\
+
+    Error_page = '''\
         <html>
             <body>
-                <table>
-                    <tr>  <td>Header</td>         <td>Value</td>          </tr>
-                    <tr>  <td>Date and time</td>  <td>{date_time}</td>    </tr>
-                    <tr>  <td>Client host</td>    <td>{client_host}</td>  </tr>
-                    <tr>  <td>Client port</td>    <td>{client_port}s</td> </tr>
-                    <tr>  <td>Command</td>        <td>{command}</td>      </tr>
-                    <tr>  <td>Path</td>           <td>{path}</td>         </tr>
-                </table>
+                <h1>Error accessing {path}</h1>
+                <p>{msg}</p>
             </body>
         </html>
+
     '''
 
     # Handle a GET request.
     def do_GET(self):
-        page = self.create_page()
-        self.send_page(page)
+        # page = self.create_page()
+        # self.send_page(page)
+        try:
+            # figure out what is being requested
+            full_path = os.getcwd()+self.path
 
-    def create_page(self):
-        values = {
-        'date_time' : self.date_time_string(),
-        'client_host' : self.client_address[0],
-        'client_port' : self.client_address[1],
-        'command' : self.command,
-        'path' : self.path
-        }
-        page = self.Page.format(**values)
-        return page.encode('utf-8')
+            if not os.path.exists(full_path):
+                raise ServerException("'{0}' not found".format(self.path))
+            elif os.path.exists(full_path):
+                self.handle_file(full_path)
+            else:
+                raise ServerException("Unknown object '{0}' ".format(self.path))
 
-    def send_page(self, page):
-        self.send_response(200)
+        except Exception as msg:
+            self.handle_error(msg)
+
+    def send_content(self, content, status=200):
+        self.send_response(status)
         self.send_header('Content-Type', 'text/html')
-        self.send_header('Content-Length', str(len(page)))
+        self.send_header('Content-Length', str(len(content)))
         self.end_headers()
-        self.wfile.write(page)
+        self.wfile.write(content)
+
+    def handle_file(self, full_path):
+        try:
+            with open(full_path, 'rb') as f:
+                content = f.read()
+            self.send_content(content)
+        except IOError as msg:
+            msg = "'{0}' cannot be read : {1}".format(self.path, msg)
+            self.handle_error(msg)
+
+    # handle unknown object
+    def handle_error(self, msg):
+        content = self.Error_page.format(msg=msg, path=self.path).encode('utf-8')
+        self.send_content(content, 404)
+
+class ServerException(Exception):
+    pass
 
 #-------------------------------------------------------------------------------
 
