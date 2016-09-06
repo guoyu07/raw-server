@@ -1,6 +1,7 @@
 import os
 import http.server
 from abc import ABCMeta, abstractmethod
+from subprocess import Popen, PIPE
 
 
 class Case(metaclass=ABCMeta):
@@ -11,6 +12,15 @@ class Case(metaclass=ABCMeta):
     @abstractmethod
     def act(self, handler):
         pass
+
+class case_run_cgi(Case):
+    '''Something runnable'''
+    def test(self, handler):
+        return os.path.isfile(handler.full_path) and \
+        handler.full_path.endswith('.py')
+
+    def act(self, handler):
+        handler.run_cgi(handler.full_path)
 
 class case_directory_no_index_file(Case):
     '''Serve listing for the directory without an index file'''
@@ -63,8 +73,9 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
     If requested file is found then its serverd!
     If anything else is happened error page is constructed!
     '''
-    Cases = [case_no_file, case_existing_file, \
-            case_directory_index_file, case_directory_no_index_file, case_always_fail]
+    Cases = [case_no_file, case_run_cgi, case_existing_file, \
+    case_directory_index_file, case_directory_no_index_file,\
+    case_always_fail]
 
     # listing directory page layout
     Listing_dir_page = '''\
@@ -125,6 +136,13 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as msg:
             msg = "'{0}' cannot be listed: {1}".format(full_path, msg)
             self.handle_error(msg)
+
+    def run_cgi(self, full_path):
+        compiler_env = 'python'
+        process = Popen([compiler_env, full_path], stdout=PIPE, stdin=PIPE)
+        stdout, stderr = process.communicate()
+        process.terminate()
+        self.send_content(stdout)
 
     # handle unknown object
     def handle_error(self, msg):
