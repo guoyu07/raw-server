@@ -5,6 +5,18 @@ from subprocess import Popen, PIPE
 
 
 class Case(metaclass=ABCMeta):
+
+    def handle_file(self, handler, full_path):
+        try:
+            with open(full_path, 'rb') as f:
+                content = f.read()
+            handler.send_content(content)
+        except IOError as msg:
+            msg = "'{0}' cannot be read : {1}".format(handler.path, msg)
+            handler.handle_error(msg)
+
+    def index_path(self, handler):
+        return os.path.join(handler.full_path, 'index.html')
     @abstractmethod
     def test(self, handler):
         pass
@@ -13,7 +25,7 @@ class Case(metaclass=ABCMeta):
     def act(self, handler):
         pass
 
-class case_run_cgi(Case):
+class case_cgi_file(Case):
     '''Something runnable'''
     def test(self, handler):
         return os.path.isfile(handler.full_path) and \
@@ -24,8 +36,7 @@ class case_run_cgi(Case):
 
 class case_directory_no_index_file(Case):
     '''Serve listing for the directory without an index file'''
-    def index_path(self, handler):
-        return os.path.join(handler.full_path, 'index.html')
+
     def test(self, handler):
         return os.path.isdir(handler.full_path) and \
                not os.path.isfile(self.index_path(handler))
@@ -35,13 +46,12 @@ class case_directory_no_index_file(Case):
 
 class case_directory_index_file(Case):
     '''serve index.html for a directory!'''
-    def index_path(self, handler):
-        return os.path.join(handler.full_path, 'index.html')
+
     def test(self, handler):
         return os.path.isdir(handler.full_path) and \
                os.path.isfile(self.index_path(handler))
     def act(self, handler):
-        handler.handle_file(self.index_path(handler))
+        self.handle_file(handler, self.index_path(handler))
 
 class case_no_file(Case):
     ''' File or directory does not exists!'''
@@ -56,7 +66,7 @@ class case_existing_file(Case):
     def test(self, handler):
         return os.path.isfile(handler.full_path)
     def act(self, handler):
-        handler.handle_file(handler.full_path)
+        self.handle_file(handler, handler.full_path)
 
 class case_always_fail(Case):
     '''Base case if nothing else worked!'''
@@ -73,7 +83,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
     If requested file is found then its serverd!
     If anything else is happened error page is constructed!
     '''
-    Cases = [case_no_file, case_run_cgi, case_existing_file, \
+    Cases = [case_no_file, case_cgi_file, case_existing_file, \
     case_directory_index_file, case_directory_no_index_file,\
     case_always_fail]
 
@@ -117,15 +127,6 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(content)))
         self.end_headers()
         self.wfile.write(content)
-
-    def handle_file(self, full_path):
-        try:
-            with open(full_path, 'rb') as f:
-                content = f.read()
-            self.send_content(content)
-        except IOError as msg:
-            msg = "'{0}' cannot be read : {1}".format(self.path, msg)
-            self.handle_error(msg)
 
     def list_dir(self, full_path):
         try:
