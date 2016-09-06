@@ -12,6 +12,17 @@ class Case(metaclass=ABCMeta):
     def act(self, handler):
         pass
 
+class case_directory_no_index_file(Case):
+    '''Serve listing for the directory without an index file'''
+    def index_path(self, handler):
+        return os.path.join(handler.full_path, 'index.html')
+    def test(self, handler):
+        return os.path.isdir(handler.full_path) and \
+               not os.path.isfile(self.index_path(handler))
+
+    def act(self, handler):
+        handler.list_dir(handler.full_path)
+
 class case_directory_index_file(Case):
     '''serve index.html for a directory!'''
     def index_path(self, handler):
@@ -53,7 +64,12 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
     If anything else is happened error page is constructed!
     '''
     Cases = [case_no_file, case_existing_file, \
-            case_directory_index_file, case_always_fail]
+            case_directory_index_file, case_directory_no_index_file, case_always_fail]
+
+    # listing directory page layout
+    Listing_dir_page = '''\
+        <html><body><ul>{0}</ul></body></html>
+    '''
 
     Error_page = '''\
         <html>
@@ -98,6 +114,16 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_content(content)
         except IOError as msg:
             msg = "'{0}' cannot be read : {1}".format(self.path, msg)
+            self.handle_error(msg)
+
+    def list_dir(self, full_path):
+        try:
+            entries = os.listdir(full_path)
+            bullets = ['<li>{0}</li>'.format(e) for e in entries if not e.startswith('.')]
+            page = self.Listing_dir_page.format('\n'.join(bullets)).encode('utf-8')
+            self.send_content(page)
+        except Exception as msg:
+            msg = "'{0}' cannot be listed: {1}".format(full_path, msg)
             self.handle_error(msg)
 
     # handle unknown object
